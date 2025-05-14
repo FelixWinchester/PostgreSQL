@@ -320,8 +320,7 @@ DECLARE
     affected_rows INT;
 BEGIN
     -- Удаляем явное управление транзакциями (BEGIN/COMMIT/ROLLBACK)
-    -- В процедурах PL/pgSQL транзакции управляются автоматически
-    
+
     UPDATE payments
     SET amount = amount * (1 + LEAST(inflation_rate/100, max_increase/100))
     WHERE payment_date > CURRENT_DATE;
