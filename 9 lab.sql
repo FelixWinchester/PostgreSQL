@@ -211,3 +211,55 @@ ORDER BY review_date DESC
 LIMIT 10 OFFSET 20;
 
 -- 11 Управление транзакциями, ошибки, стек вызова --
+
+CREATE TABLE IF NOT EXISTS error_logs (
+    id SERIAL PRIMARY KEY,
+    error_message TEXT,
+    pg_exception_context TEXT,
+    pg_context TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+BEGIN;
+SAVEPOINT before_error;
+
+-- ОШИБКА --
+INSERT INTO clients (full_name, birth_date, gender, phone)
+VALUES (NULL, NULL, 'Unknown', NULL);
+
+ROLLBACK TO SAVEPOINT before_error;
+
+INSERT INTO clients (full_name, birth_date, gender, phone)
+VALUES ('хочу питсы', '1990-01-01', 'Male', '+79991112233');
+
+COMMIT;
+
+CREATE OR REPLACE FUNCTION test_transaction_error()
+RETURNS void AS $$
+DECLARE
+    stacked_context TEXT;
+    current_context TEXT;
+BEGIN
+    BEGIN
+        -- Ошибочная вставка
+        INSERT INTO clients (full_name, birth_date, gender, phone)
+        VALUES (NULL, NULL, 'Error', NULL);
+    EXCEPTION
+        WHEN OTHERS THEN
+            GET STACKED DIAGNOSTICS stacked_context = PG_EXCEPTION_CONTEXT;
+            GET DIAGNOSTICS current_context = PG_CONTEXT;
+
+            -- Логируем в таблицу
+            INSERT INTO error_logs (error_message, pg_exception_context, pg_context)
+            VALUES (SQLERRM, stacked_context, current_context);
+
+            RAISE NOTICE 'Ошибка: %', SQLERRM;
+            RAISE NOTICE 'PG_EXCEPTION_CONTEXT: %', stacked_context;
+            RAISE NOTICE 'PG_CONTEXT: %', current_context;
+    END;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT test_transaction_error();
+
+SELECT * FROM error_logs ORDER BY created_at DESC LIMIT 1;
